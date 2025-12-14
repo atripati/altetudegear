@@ -122,7 +122,7 @@ const Contact = () => {
                     </div>
                     <div>
                       <h3 className="font-semibold mb-1">Email</h3>
-                      <p className="text-muted-foreground">hello@altitudegear.com</p>
+                      <p className="text-muted-foreground">help@altitudegear.com</p>
                       <p className="text-muted-foreground">support@altitudegear.com</p>
                     </div>
                   </div>
@@ -133,7 +133,7 @@ const Contact = () => {
                     </div>
                     <div>
                       <h3 className="font-semibold mb-1">Phone</h3>
-                      <p className="text-muted-foreground">+977 1 234 5678</p>
+                      <p className="text-muted-foreground">+977 9702697747</p>
                       <p className="text-sm text-muted-foreground">Mon-Fri, 9am-6pm NPT</p>
                     </div>
                   </div>
@@ -146,8 +146,8 @@ const Contact = () => {
                       <h3 className="font-semibold mb-1">Headquarters</h3>
                       <p className="text-muted-foreground">
                         Altitude Gear HQ<br />
-                        Thamel District<br />
-                        Kathmandu, Nepal 44600
+                        Rupandehi District<br />
+                        L.C.M 10 Mahilwari, Nepal 44600
                       </p>
                     </div>
                   </div>
