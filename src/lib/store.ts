@@ -1,21 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-export interface Product {
-  id: string;
-  name: string;
-  price: number;
-  originalPrice?: number;
-  image: string;
-  category: string;
-  collection: string;
-  sizes: string[];
-  colors: { name: string; value: string }[];
-  description: string;
-  features: string[];
-  isNew?: boolean;
-  isBestSeller?: boolean;
-}
+import { Product } from './products/types';
+export type { Product };
 
 export interface CartItem {
   product: Product;
