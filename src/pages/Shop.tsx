@@ -1,23 +1,73 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { CartDrawer } from '@/components/CartDrawer';
 import { ProductCard } from '@/components/ProductCard';
-import { products, categories, collections } from '@/lib/products';
+import { categories, collections, getProducts } from '@/lib/products';
 import { cn } from '@/lib/utils';
 import { SlidersHorizontal, X } from 'lucide-react';
 
 const Shop = () => {
+  const allProducts = useMemo(() => getProducts(), []);
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [selectedSize, setSelectedSize] = useState('All');
+  const [selectedColor, setSelectedColor] = useState('All');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [sortBy, setSortBy] = useState('featured');
 
+  const priceBounds = useMemo(() => {
+    const prices = allProducts.map((product) => product.price);
+    return {
+      min: Math.min(...prices),
+      max: Math.max(...prices),
+    };
+  }, [allProducts]);
+
+  const [priceRange, setPriceRange] = useState<[number, number]>([
+    priceBounds.min,
+    priceBounds.max,
+  ]);
+
+  useEffect(() => {
+    setPriceRange([priceBounds.min, priceBounds.max]);
+  }, [priceBounds.min, priceBounds.max]);
+
+  useEffect(() => {
+    const handler = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 300);
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
+
   const collectionFilter = searchParams.get('collection');
 
+  const allSizes = useMemo(
+    () => Array.from(new Set(allProducts.flatMap((product) => product.sizes))),
+    [allProducts]
+  );
+
+  const allColors = useMemo(
+    () =>
+      Array.from(
+        new Set(allProducts.flatMap((product) => product.colors.map((color) => color.name)))
+      ),
+    [allProducts]
+  );
+
   const filteredProducts = useMemo(() => {
-    let result = [...products];
+    let result = [...allProducts];
+
+    if (debouncedSearch) {
+      const term = debouncedSearch.toLowerCase();
+      result = result.filter(
+        (product) =>
+          product.name.toLowerCase().includes(term) ||
+          product.description.toLowerCase().includes(term) ||
+          product.tags?.some((tag) => tag.toLowerCase().includes(term))
+      );
+    }
 
     // Filter by collection
     if (collectionFilter) {
@@ -30,6 +80,24 @@ const Shop = () => {
     if (selectedCategory !== 'All') {
       result = result.filter((p) => p.category === selectedCategory);
     }
+
+    if (selectedSize !== 'All') {
+      result = result.filter((product) =>
+        product.inventory.some(
+          (entry) => entry.size === selectedSize && entry.stock && entry.stock > 0
+        )
+      );
+    }
+
+    if (selectedColor !== 'All') {
+      result = result.filter((product) =>
+        product.colors.some((color) => color.name === selectedColor)
+      );
+    }
+
+    result = result.filter(
+      (product) => product.price >= priceRange[0] && product.price <= priceRange[1]
+    );
 
     // Sort
     switch (sortBy) {
@@ -48,14 +116,34 @@ const Shop = () => {
     }
 
     return result;
-  }, [collectionFilter, selectedCategory, sortBy]);
+  }, [
+    allProducts,
+    collectionFilter,
+    debouncedSearch,
+    priceRange,
+    selectedCategory,
+    selectedColor,
+    selectedSize,
+    sortBy,
+  ]);
 
   const clearFilters = () => {
     setSelectedCategory('All');
+    setSelectedSize('All');
+    setSelectedColor('All');
+    setSearchTerm('');
+    setPriceRange([priceBounds.min, priceBounds.max]);
     setSearchParams({});
   };
 
-  const hasActiveFilters = selectedCategory !== 'All' || collectionFilter;
+  const hasActiveFilters =
+    selectedCategory !== 'All' ||
+    collectionFilter !== null ||
+    selectedSize !== 'All' ||
+    selectedColor !== 'All' ||
+    debouncedSearch.length > 0 ||
+    priceRange[0] !== priceBounds.min ||
+    priceRange[1] !== priceBounds.max;
 
   return (
     <div className="min-h-screen bg-background">
@@ -82,7 +170,7 @@ const Shop = () => {
           <div className="container-custom">
             {/* Filter Bar */}
             <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
-              <div className="flex items-center gap-4">
+              <div className="flex flex-wrap items-center gap-4">
                 <button
                   onClick={() => setShowFilters(!showFilters)}
                   className="inline-flex items-center gap-2 px-4 py-2 border border-border rounded-lg hover:bg-secondary transition-colors"
@@ -90,6 +178,16 @@ const Shop = () => {
                   <SlidersHorizontal className="w-4 h-4" />
                   Filters
                 </button>
+
+                <div className="relative">
+                  <input
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search products..."
+                    className="w-64 max-w-full px-4 py-2 bg-secondary border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                    aria-label="Search products"
+                  />
+                </div>
 
                 {hasActiveFilters && (
                   <button
@@ -117,7 +215,7 @@ const Shop = () => {
             {/* Filter Panel */}
             {showFilters && (
               <div className="mb-8 p-6 bg-secondary rounded-lg animate-fade-in">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
                   {/* Categories */}
                   <div>
                     <h3 className="font-semibold uppercase tracking-wider mb-4">Category</h3>
@@ -168,6 +266,136 @@ const Shop = () => {
                           {collection.name}
                         </button>
                       ))}
+                    </div>
+                  </div>
+
+                  {/* Sizes */}
+                  <div>
+                    <h3 className="font-semibold uppercase tracking-wider mb-4">Size</h3>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => setSelectedSize('All')}
+                        className={cn(
+                          'px-3 py-2 rounded-full text-sm transition-colors',
+                          selectedSize === 'All'
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-muted text-muted-foreground hover:text-foreground'
+                        )}
+                      >
+                        All sizes
+                      </button>
+                      {allSizes.map((size) => (
+                        <button
+                          key={size}
+                          onClick={() => setSelectedSize(size)}
+                          className={cn(
+                            'px-3 py-2 rounded-full text-sm transition-colors',
+                            selectedSize === size
+                              ? 'bg-primary text-primary-foreground'
+                              : 'bg-muted text-muted-foreground hover:text-foreground'
+                          )}
+                        >
+                          {size}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Colors */}
+                  <div>
+                    <h3 className="font-semibold uppercase tracking-wider mb-4">Color</h3>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => setSelectedColor('All')}
+                        className={cn(
+                          'px-3 py-2 rounded-full text-sm transition-colors',
+                          selectedColor === 'All'
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-muted text-muted-foreground hover:text-foreground'
+                        )}
+                      >
+                        All colors
+                      </button>
+                      {allColors.map((color) => (
+                        <button
+                          key={color}
+                          onClick={() => setSelectedColor(color)}
+                          className={cn(
+                            'px-3 py-2 rounded-full text-sm transition-colors',
+                            selectedColor === color
+                              ? 'bg-primary text-primary-foreground'
+                              : 'bg-muted text-muted-foreground hover:text-foreground'
+                          )}
+                        >
+                          {color}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Price Range */}
+                  <div className="md:col-span-2 xl:col-span-1">
+                    <h3 className="font-semibold uppercase tracking-wider mb-4">Price Range</h3>
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-4">
+                        <label className="text-sm text-muted-foreground" htmlFor="min-price">
+                          Min
+                        </label>
+                        <input
+                          id="min-price"
+                          type="number"
+                          min={priceBounds.min}
+                          max={priceRange[1]}
+                          value={priceRange[0]}
+                          onChange={(e) =>
+                            setPriceRange([Math.min(Number(e.target.value), priceRange[1]), priceRange[1]])
+                          }
+                          className="w-28 px-3 py-2 rounded-lg border border-border bg-background"
+                        />
+                        <label className="text-sm text-muted-foreground" htmlFor="max-price">
+                          Max
+                        </label>
+                        <input
+                          id="max-price"
+                          type="number"
+                          min={priceRange[0]}
+                          max={priceBounds.max}
+                          value={priceRange[1]}
+                          onChange={(e) =>
+                            setPriceRange([priceRange[0], Math.max(Number(e.target.value), priceRange[0])])
+                          }
+                          className="w-28 px-3 py-2 rounded-lg border border-border bg-background"
+                        />
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="range"
+                          min={priceBounds.min}
+                          max={priceBounds.max}
+                          value={priceRange[0]}
+                          onChange={(e) =>
+                            setPriceRange([Math.min(Number(e.target.value), priceRange[1]), priceRange[1]])
+                          }
+                          className="w-full"
+                          aria-label="Minimum price"
+                        />
+                        <input
+                          type="range"
+                          min={priceBounds.min}
+                          max={priceBounds.max}
+                          value={priceRange[1]}
+                          onChange={(e) =>
+                            setPriceRange([priceRange[0], Math.max(Number(e.target.value), priceRange[0])])
+                          }
+                          className="w-full"
+                          aria-label="Maximum price"
+                        />
+                      </div>
+
+                      <p className="text-sm text-muted-foreground">
+                        Showing items priced between ${priceRange[0]} and ${priceRange[1]}
+                      </p>
                     </div>
                   </div>
                 </div>
