@@ -4,7 +4,7 @@ import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { CartDrawer } from '@/components/CartDrawer';
 import { ProductCard } from '@/components/ProductCard';
-import { products } from '@/lib/products';
+import { getProducts } from '@/lib/products';
 import { useCartStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { ChevronLeft, Minus, Plus, Check, Truck, Shield, RotateCcw } from 'lucide-react';
@@ -12,7 +12,8 @@ import { toast } from 'sonner';
 
 const ProductDetail = () => {
   const { id } = useParams<{ id: string }>();
-  const product = products.find((p) => p.id === id);
+  const allProducts = getProducts();
+  const product = allProducts.find((p) => p.id === id);
   const { addItem } = useCartStore();
 
   const [selectedSize, setSelectedSize] = useState<string>('');
@@ -32,7 +33,7 @@ const ProductDetail = () => {
     );
   }
 
-  const relatedProducts = products
+  const relatedProducts = allProducts
     .filter((p) => p.collection === product.collection && p.id !== product.id)
     .slice(0, 4);
 

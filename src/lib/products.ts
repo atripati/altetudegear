@@ -9,6 +9,12 @@ import { validateProduct } from './products/validation';
 
 const CUSTOM_PRODUCTS_STORAGE_KEY = 'altitudegear-custom-products';
 
+const slugify = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)+/g, '');
+
 const createInventory = (
   sizes: string[],
   colors: string[],
@@ -244,7 +250,18 @@ const persistCustomProducts = (entries: Product[]) => {
   window.localStorage.setItem(CUSTOM_PRODUCTS_STORAGE_KEY, JSON.stringify(entries));
 };
 
-export const getProducts = (): Product[] => [...baseProducts, ...readCustomProducts()];
+export const getCustomProducts = (): Product[] => readCustomProducts();
+
+export const clearCustomProducts = () => persistCustomProducts([]);
+
+export const deleteCustomProduct = (slug: string) => {
+  const existing = readCustomProducts();
+  const updated = existing.filter((product) => product.slug !== slug);
+  persistCustomProducts(updated);
+  return updated.length !== existing.length;
+};
+
+export const getProducts = (): Product[] => [...baseProducts, ...getCustomProducts()];
 
 export const products: Product[] = getProducts();
 
@@ -261,6 +278,11 @@ export const upsertCustomProduct = (product: Product) => {
     return { success: false, errors: result.errors };
   }
 
+  const baseSlugs = new Set(baseProducts.map((entry) => entry.slug));
+  if (baseSlugs.has(product.slug)) {
+    return { success: false, errors: [`Slug "${product.slug}" is already used by a base product.`] };
+  }
+
   const existingCustomProducts = readCustomProducts();
   const updatedProducts = [
     ...existingCustomProducts.filter(
@@ -271,6 +293,93 @@ export const upsertCustomProduct = (product: Product) => {
 
   persistCustomProducts(updatedProducts);
   return { success: true, errors: [] as string[] };
+};
+
+const normalizeProduct = (product: Partial<Product>, index: number): Product => {
+  const normalizedSlug = product.slug?.trim() || slugify(product.name || `product-${index + 1}`);
+  const normalizedId = product.id?.toString() || `custom-${normalizedSlug}-${index + 1}`;
+
+  const images = (product.images || []).map((image, imageIndex) => ({
+    src: image.src,
+    alt: image.alt || `${product.name || 'Custom product'} image ${imageIndex + 1}`,
+    primary: image.primary,
+  }));
+
+  if (!images.length && product.image) {
+    images.push({ src: product.image, alt: `${product.name || 'Custom product'} image`, primary: true });
+  }
+
+  return {
+    id: normalizedId,
+    slug: normalizedSlug,
+    name: product.name || '',
+    description: product.description || '',
+    price: Number(product.price ?? 0),
+    originalPrice: product.originalPrice,
+    image: product.image || images[0]?.src || '',
+    images,
+    category: product.category || 'Uncategorized',
+    collection: product.collection || 'Custom',
+    tags: product.tags || [],
+    sizes: product.sizes || [],
+    colors: product.colors || [],
+    inventory: product.inventory || [],
+    features: product.features || [],
+    isNew: product.isNew,
+    isBestSeller: product.isBestSeller,
+  };
+};
+
+export interface BulkImportResult {
+  successCount: number;
+  errors: { index: number; errors: string[] }[];
+}
+
+export const importCustomProducts = (entries: Partial<Product>[]): BulkImportResult => {
+  const errors: { index: number; errors: string[] }[] = [];
+
+  if (!entries.length) {
+    return { successCount: 0, errors: [{ index: 0, errors: ['No products provided to import.'] }] };
+  }
+
+  const existingCustom = readCustomProducts();
+  const existingSlugs = new Set([...baseProducts, ...existingCustom].map((entry) => entry.slug));
+  const existingIds = new Set([...baseProducts, ...existingCustom].map((entry) => entry.id));
+  const validProducts: Product[] = [];
+
+  entries.forEach((entry, index) => {
+    const normalized = normalizeProduct(entry, index);
+    const validation = validateProduct(normalized);
+
+    if (existingSlugs.has(normalized.slug) || validProducts.some((product) => product.slug === normalized.slug)) {
+      errors.push({ index, errors: [`Slug "${normalized.slug}" already exists in the catalog.`] });
+      return;
+    }
+
+    if (existingIds.has(normalized.id) || validProducts.some((product) => product.id === normalized.id)) {
+      errors.push({ index, errors: [`ID "${normalized.id}" already exists in the catalog.`] });
+      return;
+    }
+
+    if (!validation.valid) {
+      errors.push({ index, errors: validation.errors });
+      return;
+    }
+
+    validProducts.push(normalized);
+    existingSlugs.add(normalized.slug);
+    existingIds.add(normalized.id);
+  });
+
+  if (validProducts.length) {
+    const updatedProducts = [
+      ...existingCustom.filter((entry) => !validProducts.some((product) => product.slug === entry.slug)),
+      ...validProducts,
+    ];
+    persistCustomProducts(updatedProducts);
+  }
+
+  return { successCount: validProducts.length, errors };
 };
 
 export const collections = [
